@@ -4,29 +4,26 @@ const { eq } = require("drizzle-orm");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-// 1. REGISTER
-exports.register = async (req, res) => {
+// REGISTER
+exports.register = async (req, res, next) => {
   try {
     const { nama, email, password } = req.body;
 
-    // Validasi field
     if (!nama || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Semua field harus diisi!",
-      });
+      const error = new Error("Semua field harus diisi!");
+      error.statusCode = 400;
+      throw error;
     }
 
-    // Hash Password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Simpan user ke database
     const [userBaru] = await db
       .insert(usersTable)
       .values({
-        nama,
-        email,
+        nama: nama.trim(),
+        email: email.trim().toLowerCase(),
         password: hashedPassword,
       })
       .returning({
@@ -41,63 +38,57 @@ exports.register = async (req, res) => {
       data: userBaru,
     });
   } catch (error) {
-    // Email sudah terdaftar
+    // PostgreSQL unique violation
     if (error.code === "23505") {
-      return res.status(400).json({
-        success: false,
-        message: "Email sudah terdaftar!",
-      });
+      error.statusCode = 409;
+      error.message = "Email sudah terdaftar!";
     }
 
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    next(error);
   }
 };
 
-// 2. LOGIN
-exports.login = async (req, res) => {
+// LOGIN
+exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // Validasi field
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Email dan password wajib diisi!",
-      });
+      const error = new Error("Email dan password wajib diisi!");
+      error.statusCode = 400;
+      throw error;
     }
 
     // Cari user berdasarkan email
     const [user] = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.email, email));
+      .where(eq(usersTable.email, email.trim().toLowerCase()));
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "Email atau password salah!",
-      });
+      const error = new Error("Email atau password salah!");
+      error.statusCode = 401;
+      throw error;
     }
 
-    // Cek password
-    const isMatch = await bcrypt.compare(password, user.password);
+    // Bandingkan password
+    const passwordCocok = await bcrypt.compare(
+      password,
+      user.password
+    );
 
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Email atau password salah!",
-      });
+    if (!passwordCocok) {
+      const error = new Error("Email atau password salah!");
+      error.statusCode = 401;
+      throw error;
     }
 
-    // Terbitkan Token JWT
+    // Membuat token JWT
     const token = jwt.sign(
       {
         id: user.id,
-        email: user.email,
         nama: user.nama,
+        email: user.email,
       },
       process.env.JWT_SECRET,
       {
@@ -111,9 +102,6 @@ exports.login = async (req, res) => {
       token,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    next(error);
   }
-};
+};  

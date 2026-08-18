@@ -9,5 +9,7 @@ router.get("/", anggotaController.getAllAnggota);
 
 // Protected Route (Wajib menyertakan Bearer Token)
 router.post("/", verifyToken, anggotaController.createAnggota);
+router.put("/:id", verifyToken, anggotaController.updateAnggota);
+router.delete("/:id", verifyToken, anggotaController.deleteAnggota);
 
 module.exports = router;
